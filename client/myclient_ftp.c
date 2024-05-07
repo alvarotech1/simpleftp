@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 #include <err.h>
 #include <netinet/in.h>
@@ -25,7 +27,7 @@ bool recv_msg(int sd, int code, char *text) {
     int recv_s, recv_code;
 
     // receive the answer
-
+    recv_s = recv(sd, buffer, BUFSIZE, 0);
 
     // error checking
     if (recv_s < 0) warn("error receiving data");
@@ -85,24 +87,25 @@ void authenticate(int sd) {
 
     // send the command to the server
     
+    
     // relese memory
     free(input);
 
     // wait to receive password requirement and check for errors
-
+   
 
     // ask for password
     printf("passwd: ");
     input = read_input();
 
     // send the command to the server
-
+    
 
     // release memory
     free(input);
 
     // wait for answer and process it and check for errors
-
+   
 }
 
 /**
@@ -196,7 +199,7 @@ bool port_validation(const char *puerto) {
  *         ./myftp <SERVER_IP> <SERVER_PORT>
  **/
 int main (int argc, char *argv[]) {
-    int s;
+    int socket_fd;
     const char *server_ip,*server_port;
     struct sockaddr_in addr;
 
@@ -219,17 +222,31 @@ int main (int argc, char *argv[]) {
         return 1;
     }
     // create socket and check for errors
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(atoi(argv[2]));
-    memset(&addr, 0, sizeof(addr));
-    inet_pton(AF_INET, argv[1], &(addr.sin_addr));
+    if((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+    	printf("ERROR: failed to create socket.\n");
+    	return -1;
+    };
+    
 
     // set socket data    
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(atoi(argv[2]));
+    inet_pton(AF_INET, argv[1], &(addr.sin_addr));
+    //memset(&addr, 0, sizeof(addr));
 
     // connect and check for errors
+    if(connect(socket_fd, (struct sockaddr *) &addr, sizeof(struct sockaddr)) < 0) {
+    	printf("ERROR: failed to connect.\n");
+    	return -1;
+    }
 
     // if receive hello proceed with authenticate and operate if not warning
-
+    
+    if(!recv_msg(socket_fd, 220, NULL)){
+        warn("ERROR: hello message was not received");
+    }else{
+       authenticate(socket_fd);
+    }
     // close socket
 
     return 0;
