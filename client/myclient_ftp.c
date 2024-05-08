@@ -58,7 +58,9 @@ void send_msg(int sd, char *operation, char *param) {
         sprintf(buffer, "%s\r\n", operation);
 
     // send command and check for errors
-
+     if(send(sd, buffer, sizeof(buffer), 0) < 0) {
+        printf("ERROR: failed to send command.\n");
+    }
 }
 
 /**
@@ -86,26 +88,32 @@ void authenticate(int sd) {
     input = read_input();
 
     // send the command to the server
-    
+    send_msg(sd, "USER", input);
     
     // relese memory
     free(input);
 
     // wait to receive password requirement and check for errors
-   
+    code = 331;
+    if(recv_msg(sd, code, desc) != true){
+        printf("Error code");
+    };
 
     // ask for password
     printf("passwd: ");
     input = read_input();
 
     // send the command to the server
-    
+    send_msg(sd, "PASS", input);
 
     // release memory
     free(input);
 
     // wait for answer and process it and check for errors
-   
+    code = 230;
+   if(recv_msg(sd, code, desc) != true){
+    exit(EXIT_FAILURE);
+   } ;
 }
 
 /**

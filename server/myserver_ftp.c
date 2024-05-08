@@ -15,6 +15,7 @@
 #define BUFSIZE 512
 #define CMDSIZE 4
 #define PARSIZE 100
+#define CLIENTS 5
 
 #define MSG_220 "220 srvFtp version 1.0\r\n"
 #define MSG_331 "331 Password required for %s\r\n"
@@ -42,6 +43,10 @@ bool recv_cmd(int sd, char *operation, char *param) {
   int recv_s;
 
   // receive the command in the buffer and check for errors
+  recv_s = recv(sd, buffer , BUFSIZE, 0);
+
+  if (recv_s < 0) warn("error receiving data");
+  if (recv_s == 0) errx(1, "connection closed by host");
 
   // expunge the terminator characters from the buffer
   buffer[strcspn(buffer, "\r\n")] = 0;
@@ -165,14 +170,24 @@ bool authenticate(int sd) {
   char user[PARSIZE], pass[PARSIZE];
 
   // wait to receive USER action
+  recv_cmd(sd, "USER", user);
 
   // ask for password
+  send_ans(sd, MSG_331 , user);
 
   // wait to receive PASS action
+  recv_cmd(sd, "PASS", pass);
 
   // if credentials don't check denied login
+  if(!check_credentials(user, pass)){
+    send_ans(sd, MSG_530);
+    printf("Connection closed. \n");
+    return false;
+  };
 
   // confirm login
+  send_ans(sd, MSG_230,user);
+  return true;
 }
 
 /**
@@ -244,7 +259,7 @@ int main(int argc, char *argv[]) {
   }
 
   // make it listen
-  if (listen(master_sd, 5) < 0) {
+  if (listen(master_sd, CLIENTS) < 0) {
     printf("ERROR: socket failed to listen.\n");
     return -1;
   }
@@ -258,10 +273,11 @@ int main(int argc, char *argv[]) {
     }
 
     // send hello
-    
+
      send_ans(slave_sd, MSG_220);
 
     // operate only if authenticate is true
+    authenticate(slave_sd);
   }
 
   // close server socket
