@@ -116,6 +116,59 @@ void authenticate(int sd) {
    } ;
 }
 
+
+int send_port_command(int sd) {
+   
+    //Create a new socket for data connection
+    int data_sd = socket(AF_INET, SOCK_STREAM, 0);
+    if (data_sd < 0) {
+        perror("ERROR: failed to create data socket");
+        exit(EXIT_FAILURE);
+    }
+
+    //assign a random port
+    struct sockaddr_in data_addr;
+    socklen_t addr_len = sizeof(data_addr);
+    data_addr.sin_family = AF_INET;
+    data_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    data_addr.sin_port = htons(0); 
+
+
+    if (bind(data_sd, (struct sockaddr*)&data_addr, sizeof(data_addr)) < 0) {
+        perror("ERROR: failed to bind data socket");
+        close(data_sd);
+        exit(EXIT_FAILURE);
+    }
+
+    // get assigned port
+    if (getsockname(data_sd, (struct sockaddr*)&data_addr, &addr_len) < 0) {
+        perror("ERROR: failed to get data socket name");
+        close(data_sd);
+        exit(EXIT_FAILURE);
+    }
+
+    unsigned char* ip = (unsigned char*)&data_addr.sin_addr.s_addr;
+    unsigned char* port = (unsigned char*)&data_addr.sin_port;
+
+    char port_param[BUFSIZE];
+    sprintf(port_param, "%d,%d,%d,%d,%d,%d",
+            ip[0], ip[1], ip[2], ip[3], ntohs(data_addr.sin_port) / 256, ntohs(data_addr.sin_port) % 256);
+
+    // send port command
+    send_msg(sd, "PORT", port_param);
+
+    // listenig socket
+   if (listen(data_sd, 1) < 0) {
+        perror("ERROR: failed to listen on data socket");
+        close(data_sd);
+        exit(EXIT_FAILURE);
+    }
+    
+   return data_sd;
+}
+
+
+
 /**
  * function: operation get
  * sd: socket descriptor
@@ -126,26 +179,49 @@ void get(int sd, char *file_name) {
     int f_size, recv_s, r_size = BUFSIZE;
     FILE *file;
 
+    // send the PORT command to the server
+    int data_socket = send_port_command(sd);
+
     // send the RETR command to the server
+    send_msg(sd, "RETR", file_name);
 
     // check for the response
-
+     if (!recv_msg(sd, 299, desc)) {
+        printf("Error: no se pudo iniciar la transferencia del archivo.\n");
+        return;
+    }
     // parsing the file size from the answer received
     // "File %s size %ld bytes"
     sscanf(buffer, "File %*s size %d bytes", &f_size);
 
     // open the file to write
     file = fopen(file_name, "w");
-
+     if (file == NULL) {
+        perror("ERROR: failed to open file");
+        return;
+    }
+    //accepting connection from the server
+    struct sockaddr_in data_addr;
+    socklen_t data_addr_len = sizeof(data_addr);
+    int data_sd = accept(data_socket, (struct sockaddr*)&data_addr, &data_addr_len);
+    if (data_sd < 0) {
+        perror("ERROR: failed to accept data connection");
+        fclose(file);
+        return;
+    }
     //receive the file
-
-
+    while ((recv_s = recv(data_sd, buffer, r_size, 0)) > 0) {
+        fwrite(buffer, sizeof(char), recv_s, file);
+    }
 
     // close the file
     fclose(file);
 
-    // receive the OK from the server
+    //close data socket
+    close(data_sd);
 
+    // receive the OK from the server
+    recv_msg(sd, 226, NULL);
 }
 
 /**
@@ -154,9 +230,9 @@ void get(int sd, char *file_name) {
  **/
 void quit(int sd) {
     // send command QUIT to the client
-
+    send_msg(sd, "QUIT", NULL);
     // receive the answer from the server
-
+    recv_msg(sd, 221, NULL);
 }
 
 /**
@@ -207,7 +283,7 @@ bool port_validation(const char *puerto) {
  *         ./myftp <SERVER_IP> <SERVER_PORT>
  **/
 int main (int argc, char *argv[]) {
-    int socket_fd;
+    int socket_fd,data_socket;
     const char *server_ip,*server_port;
     struct sockaddr_in addr;
 
@@ -254,6 +330,7 @@ int main (int argc, char *argv[]) {
         warn("ERROR: hello message was not received");
     }else{
        authenticate(socket_fd);
+       operate(socket_fd);
     }
     // close socket
 
