@@ -12,6 +12,7 @@
 
 #include <netinet/in.h>
 
+
 #define BUFSIZE 512
 #define CMDSIZE 4
 #define PARSIZE 100
@@ -337,11 +338,31 @@ int main(int argc, char *argv[]) {
 
     // operate only if authenticate is true
     if(authenticate(slave_sd)){
-      operate(slave_sd);
+
+      // fork() new client
+      pid_t pid = fork();
+      if (pid < 0) {
+        printf("ERROR: couldn't create new process.\n");
+        return -1;
+      }
+      //child process
+      if(pid == 0){
+        close(master_sd);
+        operate(slave_sd);
+        close(slave_sd);
+        exit(0);
+      }else {
+        close(slave_sd);
+      }
+
+
+
+    }else {
+      close(slave_sd);
     };
   }
 
   // close server socket
-
+  close(master_sd);
   return 0;
 }
