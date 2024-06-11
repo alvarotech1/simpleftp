@@ -11,7 +11,8 @@
 #include <unistd.h>
 
 #include <netinet/in.h>
-
+#include <signal.h>
+#include <sys/wait.h>
 
 #define BUFSIZE 512
 #define CMDSIZE 4
@@ -274,6 +275,11 @@ void operate(int sd) {
   }
 }
 
+void handle_sigchld(int sig) {
+    (void)sig; // Silence unused variable warning
+    while (waitpid(-1, NULL, WNOHANG) > 0) {}
+}
+
 /**
  * Run with
  *         ./mysrv <SERVER_PORT>
@@ -291,9 +297,16 @@ int main(int argc, char *argv[]) {
   int master_sd, slave_sd,addr_len;
   int opt = 1;
   struct sockaddr_in master_addr, slave_addr;
-  
 
-
+ // Set up signal handler for SIGCHLD to prevent zombie processes
+  struct sigaction sa;
+  sa.sa_handler = handle_sigchld;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+  if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+    perror("sigaction");
+    exit(1);
+  }
   // memset(&master_addr, 0, sizeof(master_addr));
   master_addr.sin_family = AF_INET;
   master_addr.sin_port = htons(atoi(argv[1]));
@@ -323,15 +336,18 @@ int main(int argc, char *argv[]) {
     printf("ERROR: socket failed to listen.\n");
     return -1;
   }
+
+  printf("Waiting for connections .....\n\n");
+  
   // main loop
   while (true) {
+
     // accept connectiones sequentially and check errors
     addr_len = sizeof(struct sockaddr_in);
     if ((slave_sd = accept(master_sd, (struct sockaddr *)&slave_addr, (socklen_t *)&addr_len)) < 0) {
       printf("ERROR: socket failed to accept connection.\n");
       return -1;
     }
-
     // send hello
 
      send_ans(slave_sd, MSG_220);
@@ -354,8 +370,6 @@ int main(int argc, char *argv[]) {
       }else {
         close(slave_sd);
       }
-
-
 
     }else {
       close(slave_sd);
